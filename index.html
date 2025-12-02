@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>卷积教学工具（带参数和多函数类型）</title>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<style>
+body { font-family: Arial; margin: 20px; }
+.panel { width: 350px; float:left; margin-right:20px; }
+.plot { width: 700px; height: 300px; margin-bottom: 20px; clear:both; }
+.formula { margin-bottom: 10px; font-weight: bold; }
+input { width: 60px; }
+</style>
+</head>
+<body>
+
+<h2>卷积教学工具（带参数和多函数类型）</h2>
+
+<div class="panel">
+<h3>函数 f(τ)</h3>
+<div id="fFormula" class="formula"></div>
+类型：
+<select id="fType">
+  <option value="rect">矩形 Rect</option>
+  <option value="tri">三角 Tri</option>
+  <option value="exp">指数 Exp</option>
+  <option value="sin">正弦 Sin</option>
+</select><br>
+幅度：<input id="fA" type="number" value="1">
+宽度/衰减：<input id="fW" type="number" value="2">
+频率(用于sin)：<input id="fFreq" type="number" value="1"><br><br>
+
+<h3>函数 g(τ)</h3>
+<div id="gFormula" class="formula"></div>
+类型：
+<select id="gType">
+  <option value="rect">矩形 Rect</option>
+  <option value="tri">三角 Tri</option>
+  <option value="exp">指数 Exp</option>
+  <option value="sin">正弦 Sin</option>
+</select><br>
+幅度：<input id="gA" type="number" value="1">
+宽度/衰减：<input id="gW" type="number" value="2">
+频率(用于sin)：<input id="gFreq" type="number" value="1"><br><br>
+
+<button onclick="updateFunctions()">更新函数</button><br><br>
+<button onclick="flipGFunc()">手动翻转 g(t)</button><br><br>
+t 值：
+<input type="range" id="tSlider" min="-5" max="5" step="0.1" value="-5" oninput="animateConvolution(parseFloat(this.value))"><br><br>
+<button onclick="resetAnimation()">清零卷积</button>
+<button onclick="replayAnimation()">重播动画</button>
+</div>
+
+<div id="plotF" class="plot"></div>
+<div id="plotG" class="plot"></div>
+<div id="plotProduct" class="plot"></div>
+<div id="plotConv" class="plot"></div>
+
+<script>
+let tau = [];
+for(let i=-200;i<=200;i++) tau.push(i*0.05);
+
+let fVals=[], gVals=[];
+let gFlipped=false;
+let tHistory=[], convHistory=[];
+
+// 基本函数
+function rect(A,W,x){return Math.abs(x)<=W/2?A:0;}
+function tri(A,W,x){return Math.abs(x)<=W?A*(1-Math.abs(x)/W):0;}
+function expf(A,W,x){return x>=0?A*Math.exp(-x/W):0;}
+function sinf(A,W,x,freq){return A*Math.sin(freq*x);}
+function generate(type,A,W,freq,x,flip=false){
+    if(flip) x=-x;
+    if(type==='rect') return rect(A,W,x);
+    if(type==='tri') return tri(A,W,x);
+    if(type==='exp') return expf(A,W,x);
+    if(type==='sin') return sinf(A,W,x,freq);
+}
+
+// 更新公式显示
+function updateFormula(){
+    let fType=document.getElementById("fType").value;
+    let fA=document.getElementById("fA").value;
+    let fW=document.getElementById("fW").value;
+    let fFreq=document.getElementById("fFreq").value;
+    let fText=fType==='rect'?'f(τ)=A·rect(τ/W)':
+              fType==='tri'?'f(τ)=A·tri(τ/W)':
+              fType==='exp'?'f(τ)=A·exp(-τ/W)':
+              `f(τ)=A·sin(ωτ), ω=${fFreq}`;
+    fText+=`，A=${fA}, W=${fW}`;
+    document.getElementById("fFormula").innerText=fText;
+
+    let gType=document.getElementById("gType").value;
+    let gA=document.getElementById("gA").value;
+    let gW=document.getElementById("gW").value;
+    let gFreq=document.getElementById("gFreq").value;
+    let gText=gType==='rect'?'g(τ)=A·rect(τ/W)':
+              gType==='tri'?'g(τ)=A·tri(τ/W)':
+              gType==='exp'?'g(τ)=A·exp(-τ/W)':
+              `g(τ)=A·sin(ωτ), ω=${gFreq}`;
+    gText+=`，A=${gA}, W=${gW}`;
+    gText += gFlipped ? " （手动翻转）" : "";
+    document.getElementById("gFormula").innerText=gText;
+}
+
+// 更新函数图像
+function updateFunctions(){
+    let fType=document.getElementById("fType").value;
+    let gType=document.getElementById("gType").value;
+    let fA=parseFloat(document.getElementById("fA").value);
+    let fW=parseFloat(document.getElementById("fW").value);
+    let fFreq=parseFloat(document.getElementById("fFreq").value);
+    let gA=parseFloat(document.getElementById("gA").value);
+    let gW=parseFloat(document.getElementById("gW").value);
+    let gFreq=parseFloat(document.getElementById("gFreq").value);
+
+    fVals = tau.map(t=>generate(fType,fA,fW,fFreq,t,false));
+    gVals = tau.map(t=>generate(gType,gA,gW,gFreq,t,gFlipped));
+
+    Plotly.newPlot("plotF", [{x:tau, y:fVals, mode:'lines'}], {title:"f(τ)", xaxis:{title:'τ'}, yaxis:{title:'f(τ)'}});
+    Plotly.newPlot("plotG", [{x:tau, y:gVals, mode:'lines'}], {title:"g(τ)", xaxis:{title:'τ'}, yaxis:{title:'g(τ)'}});
+    Plotly.newPlot("plotProduct", [{x:tau, y:new Array(tau.length).fill(0), mode:'lines'}], {title:"f(τ)·g(t−τ)", xaxis:{title:'τ'}, yaxis:{title:'积'}});
+    Plotly.newPlot("plotConv", [{x:[], y:[], mode:'lines+markers'}], {title:"卷积 C(t)", xaxis:{title:'t'}, yaxis:{title:'C(t)'}});
+    
+    updateFormula();
+    resetAnimation();
+}
+
+// 手动翻转 g
+function flipGFunc(){
+    gFlipped = !gFlipped;
+    updateFunctions();
+}
+
+// 卷积动画
+function animateConvolution(t){
+    let fType=document.getElementById("fType").value;
+    let gType=document.getElementById("gType").value;
+    let fA=parseFloat(document.getElementById("fA").value);
+    let fW=parseFloat(document.getElementById("fW").value);
+    let fFreq=parseFloat(document.getElementById("fFreq").value);
+    let gA=parseFloat(document.getElementById("gA").value);
+    let gW=parseFloat(document.getElementById("gW").value);
+    let gFreq=parseFloat(document.getElementById("gFreq").value);
+
+    let shiftedG = tau.map(x=>generate(gType,gA,gW,gFreq,x-t,true)); // 自动翻转
+    let product = fVals.map((v,i)=>v*shiftedG[i]);
+
+    Plotly.newPlot("plotG", [{x:tau, y:shiftedG, mode:'lines'}], {title:"g(t−τ)（自动翻转）", xaxis:{title:'τ'}, yaxis:{title:'g(t−τ)'}});
+    Plotly.newPlot("plotProduct", [{x:tau, y:product, mode:'lines'}], {title:"f(τ)·g(t−τ)", xaxis:{title:'τ'}, yaxis:{title:'积'}});
+
+    let area = product.reduce((acc,v)=>acc+v*0.05,0);
+    tHistory.push(t);
+    convHistory.push(area);
+    Plotly.newPlot("plotConv", [{x:tHistory, y:convHistory, mode:'lines+markers'}], {title:"卷积 C(t)", xaxis:{title:'t'}, yaxis:{title:'C(t)'}});
+}
+
+// 清零与重播
+function resetAnimation(){ tHistory=[]; convHistory=[]; Plotly.newPlot("plotConv", [{x:[], y:[], mode:'lines+markers'}], {title:"卷积 C(t)", xaxis:{title:'t'}, yaxis:{title:'C(t)'} }); }
+function replayAnimation(){ resetAnimation(); let t=-5; let maxT=5; function step(){ animateConvolution(t); t+=0.1; if(t<=maxT) requestAnimationFrame(step); } step(); }
+
+updateFunctions();
+</script>
+
+</body>
+</html>
